@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Şamdan AI-MAP</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://unicons.iconscout.com/release/v4.0.0/css/line.css">
+    <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="/static/style.css?v=3">
+
+</head>
+
+<body>
+    <div class="bg-overlay"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <img src="data:image/png;base64,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"
+                    alt="Şamdan AI-MAP" style="height: 120px;">
+            </div>
+            <p class="subtitle">Şamdan AI Based Next-Gen Malware Analysis Powered by MobSF, VirusTotal, JADX &
+                Subfinder
+            </p>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+
+            <!-- Top Dashboard: 3 Columns -->
+            <div class="top-dashboard">
+
+                <!-- 1. Configuration Card -->
+                <div class="card config-card">
+                    <div class="card-header">
+                        <i class="uil uil-cog"></i>
+                        <h3>Configuration</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">MobSF API Key</label>
+                            <input type="password" id="mobsf-key" class="form-control" placeholder="Enter MobSF API Key"
+                                value="">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">VirusTotal API Key</label>
+                            <input type="password" id="vt-key" class="form-control"
+                                placeholder="Enter VirusTotal API Key" value="">
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">AI Model Provider</label>
+                            <select id="llm-provider" class="form-select" onchange="toggleLLMFields()">
+                                <option value="gemini">Google Gemini (Cloud)</option>
+                                <option value="ollama">Ollama (Local)</option>
+                                <option value="samdan">Şamdan.ai (Fine-Tuned)</option>
+                            </select>
+                        </div>
+
+                        <div id="gemini-fields">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Gemini API Key</label>
+                                <input type="password" id="gemini-key" class="form-control"
+                                    placeholder="Enter Gemini API Key" value="">
+                            </div>
+                        </div>
+
+                        <div id="ollama-fields" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Ollama Model Name</label>
+                                <input type="text" id="ollama-model" class="form-control" value="ollama3.1:8b"
+                                    placeholder="e.g. ollama3.1:8b, mistral">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Upload Card -->
+                <div class="card upload-card">
+                    <div class="card-header">
+                        <i class="uil uil-upload"></i>
+                        <h3>Upload APK</h3>
+                    </div>
+                    <div class="upload-area" id="drop-zone">
+                        <i class="uil uil-cloud-upload"></i>
+                        <p>Drag & Drop APK file here</p>
+                        <span>or</span>
+                        <button class="btn btn-outline-primary fw-semibold"
+                            onclick="document.getElementById('file-input').click()">Browse
+                            Files</button>
+                        <input type="file" id="file-input" hidden accept=".apk" multiple>
+                    </div>
+                    <div id="file-info" class="file-info hidden">
+                        <i class="uil uil-file-alt"></i>
+                        <span id="filename">app.apk</span>
+                        <i class="uil uil-times remove-file" onclick="clearFile()"></i>
+                    </div>
+                    <button id="analyze-btn" class="btn-analyze" disabled onclick="startAnalysis()">
+                        <i class="uil uil-search-alt"></i> Start Analysis
+                    </button>
+                </div>
+
+                <!-- 3. Sponsors & Credits Card -->
+                <div class="card credits-card">
+                    <div class="card-header">
+                        <i class="uil uil-award"></i>
+                        <h3>Project Credits & Sponsors</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="sponsors-list">
+                            <div class="sponsor-item">
+                                <div class="sponsor-info">
+                                    <i class="uil uil-android"></i>
+                                    <strong>AndroZoo</strong>
+                                </div>
+                                <span class="badge-sponsored">Premium Dataset Provider</span>
+                            </div>
+                            <div class="sponsor-item">
+                                <div class="sponsor-info">
+                                    <i class="uil uil-shield-check"></i>
+                                    <strong>VirusTotal</strong>
+                                </div>
+                                <span class="badge-sponsored">Premium API Provider</span>
+                            </div>
+                            <div class="sponsor-item">
+                                <div class="sponsor-info">
+                                    <i class="uil uil-mobile-android"></i>
+                                    <strong>MobSF</strong>
+                                </div>
+                                <span class="badge">Static Analyzer</span>
+                            </div>
+                            <div class="sponsor-item">
+                                <div class="sponsor-info">
+                                    <i class="uil uil-brackets-curly"></i>
+                                    <strong>JADX</strong>
+                                </div>
+                                <span class="badge">Decompiler</span>
+                            </div>
+                            <div class="sponsor-item">
+                                <div class="sponsor-info">
+                                    <i class="uil uil-search"></i>
+                                    <strong>Subfinder</strong>
+                                </div>
+                                <span class="badge">Subdomain Scanner</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom Panel: Results -->
+            <div class="bottom-panel">
+
+                <div class="bulk-layout">
+                    <!-- Sidebar -->
+                    <div class="sidebar hidden" id="task-sidebar">
+                        <div class="sidebar-header">
+                            <div>
+                                <h4>Queue</h4>
+                                <span id="queue-count" class="badge">0</span>
+                            </div>
+                            <button onclick="downloadReport()" title="Download Excel Report"
+                                style="background:none; border:none; color:var(--text-primary); cursor:pointer; font-weight:600; margin-right: 10px;">
+                                <i class="uil uil-file-download-alt"></i> Export
+                            </button>
+                            <button onclick="resetApp()"
+                                style="background:none; border:none; color:var(--accent); cursor:pointer; font-weight:600;">
+                                <i class="uil uil-plus"></i> New
+                            </button>
+                        </div>
+                        <ul class="task-list" id="task-list">
+                            <!-- Task items will be injected here -->
+                        </ul>
+                    </div>
+
+                    <!-- Detail View -->
+                    <div class="result-details">
+
+                        <!-- Progress State -->
+                        <div id="progress-container" class="card status-card hidden">
+                            <h3>Analysis in Progress for <span id="current-analyzing-file">...</span></h3>
+                            <div class="steps">
+                                <div class="step active" id="step-1">
+                                    <div class="circle"><i class="uil uil-upload"></i></div>
+                                    <span>Uploading</span>
+                                </div>
+                                <div class="line"></div>
+                                <div class="step" id="step-2">
+                                    <div class="circle"><i class="uil uil-bug"></i></div>
+                                    <span>MobSF Scan</span>
+                                </div>
+                                <div class="line"></div>
+                                <div class="step" id="step-3">
+                                    <div class="circle"><i class="uil uil-crosshair"></i></div>
+                                    <span>Subfinder</span>
+                                </div>
+                                <div class="line"></div>
+                                <div class="step" id="step-4">
+                                    <div class="circle"><i class="uil uil-shield"></i></div>
+                                    <span>VirusTotal</span>
+                                </div>
+                                <div class="line"></div>
+                                <div class="step" id="step-5">
+                                    <div class="circle"><i class="uil uil-brain"></i></div>
+                                    <span>AI Analysis</span>
+                                </div>
+                            </div>
+                            <p id="status-text" class="status-text">Initializing...</p>
+                        </div>
+
+                        <!-- Results State -->
+                        <div id="result-container" class="card result-card hidden">
+                            <div class="result-header-bar">
+                                <h3 id="result-filename">Filename.apk</h3>
+                                <span id="result-timestamp" class="timestamp">Just now</span>
+                            </div>
+
+                            <div id="verdict-banner" class="verdict-banner unknown">
+                                <span id="verdict-label">PENDING</span>
+                            </div>
+
+                            <div class="tabs">
+                                <button class="tab active" onclick="switchTab('ai')">AI Insights</button>
+                                <button class="tab" onclick="switchTab('raw')">Raw Data</button>
+                            </div>
+
+                            <div id="tab-ai" class="tab-content active">
+                                <div id="ai-output" class="markdown-body">
+                                    <!-- AI Content -->
+                                </div>
+                            </div>
+
+                            <div id="tab-raw" class="tab-content">
+                                <pre id="raw-json"></pre>
+                            </div>
+
+                            <!-- Removed "Analyze Another" button from here as sidebar manages it -->
+                        </div>
+
+                        <!-- Empty State -->
+                        <div id="empty-state" class="empty-state">
+                            <img src="data:image/png;base64,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"
+                                alt="Security" width="200"
+                                style="border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                            <h3>Ready to Analyze</h3>
+                            <p>Configure your API keys and select multiple APK files to begin the comprehensive malware
+                                assessment.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-YvpcrYf0tY3lHB60NNkmxc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+        crossorigin="anonymous"></script>
+    <script src="/static/script.js?v=3"></script>
+</body>
+
+</html>
