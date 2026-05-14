@@ -125,23 +125,6 @@ Uygulama, bu servislerle API üzerinden haberleşerek analiz sürecini yürütü
 ---
 
 
-## 📜 Teşekkür ve Atıflar
-
-### Veri ve Altyapı Desteği
-- **VirusTotal** – Premium API erişimi
-- **AndroZoo** – Zararlı yazılım veri seti erişimi
-
-### Açık Kaynak Projeler
-- **MobSF & JADX** – Statik analiz
-- **Subfinder (ProjectDiscovery)** – Ağ keşfi
-
----
-
-## 📄 Lisans
-
-Bu proje **akademik kullanım** şartlarına tabidir.
-
----
 
 
 Gazi Üniversitesi  
