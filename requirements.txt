@@ -5,3 +5,4 @@ httpx
 aiofiles
 pandas
 openpyxl
+python-dotenv

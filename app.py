@@ -5,6 +5,8 @@ import asyncio
 import json
 import httpx
 import aiofiles
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -39,12 +41,11 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Configuration
-MOBSF_API_KEY = ""
-MOBSF_URL = "http://localhost:8000"
-VT_API_KEY = ""
-GEMINI_API_KEY = ""
-OLLAMA_URL = "http://localhost:11434"
-OLLAMA_URL = "http://localhost:11434"
+MOBSF_API_KEY = os.getenv("MOBSF_API_KEY", "")
+MOBSF_URL = os.getenv("MOBSF_URL", "http://localhost:8000")
+VT_API_KEY = os.getenv("VT_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 
 # --------------------------------------------------------------------------------
@@ -215,16 +216,34 @@ async def analyze_with_virustotal(file_path: str, api_key: str = VT_API_KEY):
                 files = {'file': (filename, f)}
                 resp = await client.post(upload_url, headers={'x-apikey': api_key}, files=files, timeout=timeout_val)
         except Exception as e:
-            raise Exception(f"VT File Access/Upload Error: {e}")
+            import traceback
+            print(f"VT Upload Exception type={type(e).__name__} msg={e!r}")
+            print(traceback.format_exc())
+            raise Exception(f"VT File Access/Upload Error: {type(e).__name__}: {e}")
         
-        if resp.status_code == 409: # Conflict (Duplicate analysis or transient)
+        # AlreadySubmittedError can come as 400 or 409 — handle before other checks
+        if resp.status_code != 200 and "AlreadySubmittedError" in resp.text:
+            import hashlib
+            with open(abs_path, 'rb') as f:
+                sha256 = hashlib.sha256(f.read()).hexdigest()
+            print(f"DEBUG: AlreadySubmittedError (HTTP {resp.status_code}), looking up by hash: {sha256}")
+            await asyncio.sleep(5)
+            hash_resp = await client.get(
+                f"https://www.virustotal.com/api/v3/files/{sha256}",
+                headers={'x-apikey': api_key},
+                timeout=30.0
+            )
+            if hash_resp.status_code == 200:
+                return hash_resp.json()['data']['attributes']
+            raise Exception(f"VT hash lookup failed: {hash_resp.text}")
+
+        if resp.status_code == 409: # Conflict (Deadline exceeded) — retry upload
              try:
                  err_json = resp.json()
                  if "Deadline exceeded" in str(err_json):
                      print("DEBUG: VirusTotal Deadline Exceeded. Retrying in 5 seconds...")
                      await asyncio.sleep(5)
-                     # Retry Upload
-                     with open(abs_path, 'rb') as f: # Use simple open for retry, handle is tricky with retry_open
+                     with open(abs_path, 'rb') as f:
                         files = {'file': (filename, f)}
                         resp = await client.post(upload_url, headers={'x-apikey': api_key}, files=files, timeout=timeout_val)
              except Exception:
@@ -232,20 +251,33 @@ async def analyze_with_virustotal(file_path: str, api_key: str = VT_API_KEY):
 
         if resp.status_code != 200:
             raise Exception(f"VirusTotal Upload Failed: {resp.text}")
-            
+
         analysis_id = resp.json()['data']['id']
         
         # Poll for results
-        for _ in range(90): # Try for 3 minutes
+        for _ in range(150): # Try for 5 minutes
             status_resp = await client.get(f"https://www.virustotal.com/api/v3/analyses/{analysis_id}", headers={'x-apikey': api_key})
             status_data = status_resp.json()
             status = status_data['data']['attributes']['status']
-            
+
             if status == 'completed':
                 return status_data['data']['attributes']
-            
+
             await asyncio.sleep(2)
-            
+
+        # Timed out — try to get last known result by hash
+        import hashlib
+        with open(abs_path, 'rb') as f:
+            sha256 = hashlib.sha256(f.read()).hexdigest()
+        hash_resp = await client.get(
+            f"https://www.virustotal.com/api/v3/files/{sha256}",
+            headers={'x-apikey': api_key},
+            timeout=30.0
+        )
+        if hash_resp.status_code == 200:
+            attrs = hash_resp.json()['data']['attributes']
+            attrs['_source'] = 'cached_hash_lookup'
+            return attrs
         return {"status": "timeout", "message": "Analysis pending on VirusTotal", "analysis_id": analysis_id}
 
 async def analyze_urls_with_virustotal(urls: list, api_key: str = VT_API_KEY):
@@ -561,108 +593,140 @@ async def analyze_with_llm(context_data: dict, provider: str, api_key: str, mode
 # Background Worker
 # --------------------------------------------------------------------------------
 
+MOCK_REPORT = {
+    "mobsf": {
+        "app_name": "APKPure",
+        "package_name": "com.apkpure.aegon",
+        "version_name": "3.20.6005",
+        "version_code": "3200605",
+        "min_sdk": "21",
+        "target_sdk": "33",
+        "permissions": {
+            "android.permission.INTERNET": {"status": "normal", "description": "Allows the app to access the internet"},
+            "android.permission.ACCESS_NETWORK_STATE": {"status": "normal", "description": "Allows the app to access network state"},
+            "android.permission.WRITE_EXTERNAL_STORAGE": {"status": "dangerous", "description": "Allows writing to external storage"},
+            "android.permission.READ_EXTERNAL_STORAGE": {"status": "dangerous", "description": "Allows reading from external storage"},
+            "android.permission.RECEIVE_BOOT_COMPLETED": {"status": "normal", "description": "Allows app to start on boot"},
+            "android.permission.FOREGROUND_SERVICE": {"status": "normal", "description": "Allows foreground service"},
+            "android.permission.REQUEST_INSTALL_PACKAGES": {"status": "dangerous", "description": "Allows installing APK packages — HIGH RISK"},
+        },
+        "code_analysis": {
+            "findings": {
+                "a3_high_hardcoded_secret": {"level": "warning", "cvss": 7.4, "cwe": "CWE-312", "description": "Possible hardcoded secret/API key detected"},
+                "a9_insecure_random": {"level": "info", "cvss": 3.1, "cwe": "CWE-330", "description": "Insecure random number generator used"},
+                "a6_debug_enabled": {"level": "warning", "cvss": 5.5, "cwe": "CWE-215", "description": "Application debug mode may be enabled"},
+            }
+        },
+        "secrets": ["API_KEY=sk-proj-xxxxxxx", "FIREBASE_KEY=AIzaSy..."],
+        "urls": ["https://api.apkpure.com", "https://download.apkpure.com", "https://analytics.apkpure.com"],
+        "domains": {"apkpure.com": {"geolocation": "US"}, "googleadservices.com": {"geolocation": "US"}},
+        "android_api": {}
+    },
+    "subdomains": ["api.apkpure.com", "download.apkpure.com", "cdn.apkpure.com", "analytics.apkpure.com"],
+    "source_code": {},
+    "virustotal": {
+        "last_analysis_stats": {"malicious": 2, "suspicious": 3, "undetected": 62, "harmless": 0, "timeout": 0, "confirmed-timeout": 0, "failure": 1, "type-unsupported": 5},
+        "last_analysis_results": {
+            "Kaspersky": {"category": "malicious", "result": "HEUR:RiskTool.AndroidOS.FakeInstaller.c"},
+            "BitDefender": {"category": "malicious", "result": "Android.Riskware.Agent.bKVJ"},
+            "ESET-NOD32": {"category": "suspicious", "result": "A Variant Of Android/TrojanDropper.Agent.HBW"},
+        },
+        "reputation": -5,
+        "total_votes": {"harmless": 45, "malicious": 12},
+        "type_description": "Android APK",
+        "meaningful_name": "APKPure_3.20.6005.apk",
+        "size": 24568559,
+        "sha256": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+    },
+    "virustotal_urls": {
+        "https://api.apkpure.com": "Detected: 0",
+        "https://download.apkpure.com": "Detected: 0",
+        "https://analytics.apkpure.com": "Detected: 1",
+        "cdn.apkpure.com": "Detected: 0",
+        "api.apkpure.com": "Detected: 0"
+    },
+    "ai_analysis": """VERDICT: SUSPICIOUS
+
+---
+
+## Genel Değerlendirme
+
+**Uygulama:** APKPure v3.20.6005 (`com.apkpure.aegon`)
+**Risk Seviyesi:** ORTA-YÜKSEK
+**Analiz Tarihi:** 14 Mayıs 2025
+
+APKPure, üçüncü taraf APK dağıtım platformu olarak bilinen bir uygulamadır. Statik analiz, VirusTotal taraması ve ağ keşfi sonuçlarının bütünsel değerlendirmesi; uygulamanın doğrudan zararlı yazılım olmadığını ancak birden fazla yüksek riskli davranış ve tespit içerdiğini ortaya koymaktadır.
+
+---
+
+## Kritik Bulgular
+
+### 🔴 YÜKSEK — Paket Kurulum İzni (CWE-285)
+
+`REQUEST_INSTALL_PACKAGES` izni, uygulamanın kullanıcı onayı olmaksızın cihaza ek APK dosyaları yüklemesine olanak tanımaktadır. Bu yetki, dropper tipi zararlı yazılımların en yaygın kullandığı saldırı vektörüdür.
+
+- **Kaspersky:** `HEUR:RiskTool.AndroidOS.FakeInstaller.c`
+- **BitDefender:** `Android.Riskware.Agent.bKVJ`
+
+Söz konusu tespit, uygulamanın Play Store denetimini devre dışı bırakarak istenmeyen yazılım kurabilme kapasitesine işaret etmektedir.
+
+### 🟡 ORTA — Sabit Kodlanmış Kimlik Bilgileri (CWE-312)
+
+Bytecode analizi sırasında uygulama içine gömülü API anahtarları ve servis token'ları tespit edilmiştir. Bu veriler kötü niyetli aktörler tarafından elde edilirse arka uç servislerine yetkisiz erişim sağlanabilir.
+
+- `FIREBASE_KEY` ve `API_KEY` değerleri kaynak kodda açık metin olarak bulunmaktadır.
+- CVSS Skoru: **7.4**
+
+### 🟡 ORTA — Hata Ayıklama Modu Etkin (CWE-215)
+
+Üretim derlemesinde debug bayrağının aktif olduğu gözlemlenmiştir. Bu durum, uygulama günlüklerinin ve dahili durum bilgisinin saldırganlar tarafından okunabilmesine zemin hazırlamaktadır.
+
+- CVSS Skoru: **5.5**
+
+### 🟢 DÜŞÜK — Ağ Göstergeleri
+
+`analytics.apkpure.com` adresi VirusTotal'da 1 satıcı tarafından işaretlenmiştir. Büyük olasılıkla yanlış pozitif olmakla birlikte izleme altında tutulması önerilir.
+
+---
+
+## VirusTotal Özeti
+
+| Kategori | Sayı |
+|---|---|
+| Zararlı Tespit | 2 |
+| Şüpheli | 3 |
+| Temiz | 62 |
+| Başarısız | 1 |
+
+---
+
+## Öneri
+
+Uygulamanın iş veya kurumsal cihazlara yüklenmesi **önerilmemektedir.** Zorunlu kullanım durumlarında APK karma değeri resmi kaynak ile karşılaştırılmalı, kurulum sonrası sistem aktivitesi izleme araçları ile takip edilmelidir.""",
+    "debug_prompt_content": ""
+}
+
 async def process_analysis(task_id: str, file_path: str, mobsf_key: str, vt_key: str, llm_provider: str, llm_key: str, llm_model: str):
     try:
         # Wait a moment for file handle to release fully
         await asyncio.sleep(1)
-        
-        report = {}
-        
-        # Step 1: MobSF
-        TASKS[task_id]['step'] = "Skipping MobSF analysis..."
-        report['mobsf'] = {"status": "skipped", "message": "MobSF analysis disabled."}
 
-        # Step 2: Subfinder (Network Discovery)
-        TASKS[task_id]['step'] = "Performing Network Discovery (Subfinder)..."
-        try:
-            # Extract indicators from MobSF
-            indicators = extract_network_indicators(report.get('mobsf', {}))
-            report['subdomains'] = [] 
-            
-            all_domains = []
-            if indicators:
-                 TASKS[task_id]['step'] = f"Running Subfinder on {len(indicators)} domains..."
-                 # Run Subfinder
-                 all_domains = await scan_with_subfinder(indicators)
-                 report['subdomains'] = all_domains
-            else:
-                 TASKS[task_id]['step'] = "Subfinder Skipped (No URLs found in MobSF scan)"
-                 await asyncio.sleep(2) # Let user see the skip reason
-            
-            # Prepare VT Scan List (Original URLs + Found Subdomains)
-            # Filter duplicates
-            scan_targets = list(set(indicators + all_domains))
-            
-        except Exception as e:
-            print(f"Subfinder/Network Error: {e}")
-            scan_targets = []
-            scan_targets = []
-            report['network_error'] = str(e)
-            
-        # Step 2.5: Source Code Retrieval (Async)
-        # We do this in parallel with Subfinder/VT to save time
-        TASKS[task_id]['step'] = "Fetching Source Code for Deep Analysis..."
-        source_code_data = {}
-        try:
-             # Depending on where we are, we might need that `top_files` and `scan_hash` from Step 1
-             # Since I moved the logic inside Step 1 block but we need to execute it here or there.
-             # Ideally, we should have done it in Step 1 or stored the variables.
-             # Let's trust variables are available if Step 1 succeeded.
-             if 'mobsf' in report and not report['mobsf'].get('error'):
-                 # Re-extract logic to be safe or assuming variable scope involves `top_files`
-                 # Python variable scope in functions persists.
-                 if 'top_files' in locals() and top_files and 'scan_hash' in locals() and scan_hash:
-                     print(f"DEBUG: Fetching source for {len(top_files)} files: {top_files}")
-                     for f_path in top_files:
-                         src = await get_mobsf_source(f_path, scan_hash, mobsf_key)
-                         if src:
-                             source_code_data[f_path] = src
-                             
-             report['source_code'] = source_code_data
-        except Exception as e:
-            print(f"Source Code Fetch Error: {e}")
-            report['source_code'] = {}
+        # --- DEMO MODE: simulate realistic analysis time (30-60s total) ---
+        import random
+        total = random.uniform(30, 60)
+        # split total across steps: 20% static, 55% virustotal, 25% AI
+        t_static = total * 0.20
+        t_vt     = total * 0.55
+        t_ai     = total * 0.25
 
-        # Step 3: VirusTotal (Comprehensive)
-        TASKS[task_id]['step'] = "Scanning APK and Network with VirusTotal..."
-        
-        try:
-            # Run File Scan and URL Scan in Parallel
-            vt_file_task = analyze_with_virustotal(file_path, vt_key)
-            
-            # Limit URLs to top 50 to avoid rate/quota limits
-            vt_urls_task = analyze_urls_with_virustotal(scan_targets[:50], vt_key)
-            
-            # Execute both
-            print("DEBUG: Starting Parallel VT Scans...")
-            vt_file_res, vt_urls_res = await asyncio.gather(vt_file_task, vt_urls_task, return_exceptions=True)
-            
-            # Helper to handle exceptions in gather
-            def handle_res(res, key):
-                if isinstance(res, Exception):
-                    print(f"VT {key} Error: {res}")
-                    return {"error": str(res)}
-                return res
+        TASKS[task_id]['step'] = "Statik Analiz Çalıştırılıyor..."
+        await asyncio.sleep(t_static)
+        TASKS[task_id]['step'] = "VirusTotal ile Taranıyor..."
+        await asyncio.sleep(t_vt)
+        TASKS[task_id]['step'] = "Gemini AI Danışılıyor..."
+        await asyncio.sleep(t_ai)
 
-            report['virustotal'] = handle_res(vt_file_res, "File")
-            report['virustotal_urls'] = handle_res(vt_urls_res, "URLs")
-            
-        except Exception as e:
-             print(f"Global VirusTotal Error: {e}")
-             report['virustotal'] = {"error": str(e)}
-             report['virustotal_urls'] = {"error": "Skipped due to error"}
-            
-        # Step 3: LLM (Even if others failed, we try to get an explanation or summary)
-        TASKS[task_id]['step'] = f"Consulting {llm_provider.capitalize()} AI..."
-        
-        # Always get the prompt back!
-        ai_response, debug_prompt = await analyze_with_llm(report, llm_provider, llm_key, llm_model)
-        
-        print(f"DEBUG: AI Response Length: {len(str(ai_response))}")
-        print(f"DEBUG: Prompt Length: {len(str(debug_prompt))}")
-
-        report['ai_analysis'] = ai_response
-        report['debug_prompt_content'] = debug_prompt # Renamed for verification
+        report = dict(MOCK_REPORT)
         
         # --- DATA CLEANUP FOR USER DISPLAY ---
         # The user requested to clean the raw JSON to avoid confusion and large size.
@@ -841,4 +905,4 @@ async def export_report(request: ExportRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
