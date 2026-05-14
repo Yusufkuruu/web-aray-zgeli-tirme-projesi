@@ -127,9 +127,6 @@ Uygulama, bu servislerle API üzerinden haberleşerek analiz sürecini yürütü
 
 ## 📜 Teşekkür ve Atıflar
 
-### Akademik Danışmanlık
-- **Prof. Dr. İbrahim Alper DOĞRU**
-
 ### Veri ve Altyapı Desteği
 - **VirusTotal** – Premium API erişimi
 - **AndroZoo** – Zararlı yazılım veri seti erişimi
