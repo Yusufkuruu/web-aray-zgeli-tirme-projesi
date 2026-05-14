@@ -569,83 +569,8 @@ async def process_analysis(task_id: str, file_path: str, mobsf_key: str, vt_key:
         report = {}
         
         # Step 1: MobSF
-        TASKS[task_id]['step'] = "Analyzing with MobSF..."
-        try:
-            mobsf_data, scan_hash = await analyze_with_mobsf(file_path, mobsf_key)
-            report['mobsf'] = mobsf_data
-            
-            # --- MobSF Source Code Extraction ---
-            # 1. Identify suspicious files from Code Analysis
-            suspicious_files = set()
-            code_anal = mobsf_data.get('code_analysis', {}).get('findings', {})
-            for k, v in code_anal.items():
-                # We want files associated with HIGH or WARNING severity findings
-                # usually in the 'files' key of the finding list
-                     # Broaden search to WARNING if high is empty
-                     # key 'k' is usually the finding name, 'v' is the object with metadata
-                     if isinstance(v, dict):
-                        meta = v.get('metadata', {})
-                        severity = meta.get('severity', 'low') # default to low
-                        
-                        if severity in ['high', 'warning']: 
-                         file_list = v.get('files', [])
-                         # MobSF sometimes returns list of dicts or list of strings? 
-                         # Usually list of objects like {path: ...} or just strings. 
-                         # Let's handle both.
-                         for f in file_list:
-                             if isinstance(f, dict):
-                                 f_path = f.get('path') or f.get('name')
-                                 if f_path: suspicious_files.add(f_path)
-                             elif isinstance(f, str):
-                                 suspicious_files.add(f)
-            
-                             suspicious_files.add(f)
-            
-            # 3. ROBUST FALLBACK: Parse 'appsec' section if specific file links are missing in code_analysis
-            # The 'appsec' section contains textual descriptions like: "Files:\ncom/foo/Bar.java, line(s) 123"
-            if not suspicious_files:
-                import re
-                print("DEBUG: code_analysis yielded no files. Parsing 'appsec'...")
-                appsec = mobsf_data.get('appsec', {})
-                for category in ['high', 'warning']:
-                     for finding in appsec.get(category, []):
-                         description = finding.get('description', '')
-                         # Look for file paths in description. 
-                         # Pattern: Matches tokens ending in .java
-                         # This is a heuristic but effective for MobSF reports
-                         found_paths = re.findall(r'[\w/\\.]+\.java', description)
-                         for p in found_paths:
-                             # Clean up path if needed
-                             p = p.strip().replace('\\', '/')
-                             print(f"DEBUG: Found path in appsec: {p}")
-                             suspicious_files.add(p)
-
-            # 4. FALLBACK: URL Paths
-            if not suspicious_files:
-                 print("DEBUG: No files found in code/appsec. Checking URLs...")
-                 # Try URLs section which usually has file paths
-                 for u_obj in mobsf_data.get('urls', []):
-                     if isinstance(u_obj, dict):
-                         path = u_obj.get('path')
-                         if path and path.endswith('.java'):
-                             suspicious_files.add(path)
-            
-            # Limit to top 3 files (prioritize High findings if we could differentiate, but set mix is fine)
-            top_files = list(suspicious_files)[:3]
-            
-            print(f"DEBUG: Final decision -> Fetching source for {len(top_files)} files: {top_files}")
-            # scan_hash is already set from analyze_with_mobsf return value. DO NOT OVERWRITE.
-            # Wait, our `analyze_with_mobsf` returns (filtered_report, scan_hash)
-            # We need to capture that properly.
-            
-            # RETRYING MobSF call to capture hash correctly in `analyze_with_mobsf` return
-            # (Note: I already modified `analyze_with_mobsf` to return it, so we are good)
-            # But wait, lines 584 above: `mobsf_data, _ = await analyze_with_mobsf...`
-            # The `_` ignores the hash. I need to fix that.
-            
-        except Exception as e:
-            print(f"MobSF Error: {e}")
-            report['mobsf'] = {"error": str(e)}
+        TASKS[task_id]['step'] = "Skipping MobSF analysis..."
+        report['mobsf'] = {"status": "skipped", "message": "MobSF analysis disabled."}
 
         # Step 2: Subfinder (Network Discovery)
         TASKS[task_id]['step'] = "Performing Network Discovery (Subfinder)..."
