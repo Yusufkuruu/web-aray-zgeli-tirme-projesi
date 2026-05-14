@@ -517,7 +517,7 @@ async def analyze_with_llm(context_data: dict, provider: str, api_key: str, mode
     
     try:
         if provider == "gemini":
-            target_model = "gemini-1.5-flash"
+            target_model = "gemini-2.5-flash"
             async with httpx.AsyncClient() as client:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={api_key}"
                 # Low temperature for deterministic behavior
@@ -790,7 +790,7 @@ async def upload_file(
     vt_key: str = Form(""),
     llm_provider: str = Form("gemini"), # gemini or ollama
     llm_key: str = Form(""),
-    llm_model: str = Form("gemini-1.5-flash")
+    llm_model: str = Form("gemini-2.5-flash")
 ):
     # Handle Şamdan.ai Provider Logic
     if llm_provider == "samdan":

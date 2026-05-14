@@ -173,7 +173,7 @@ async function uploadTask(tempId) {
     formData.append('vt_key', vtKeyInput.value);
 
     const provider = document.getElementById('llm-provider').value;
-    let modelName = 'gemini-1.5-flash-001';
+    let modelName = 'gemini-2.5-flash';
     if (provider === 'ollama') modelName = document.getElementById('ollama-model').value;
     if (provider === 'samdan') modelName = 'samdan-ai';
 
